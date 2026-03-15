@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runPatternScan, computeRiskScore } from '@/lib/pattern-scanner'
 import { runAIScan } from '@/lib/ai-scanner'
-import { db } from '@/lib/db'
-import { broadcastViolation } from '@/lib/sse'
-import type { ScanResult, RiskLevel, ViolationRecord } from '@/types'
+import type { ScanResult, RiskLevel } from '@/types'
 import { randomUUID } from 'crypto'
 
 function scoreToLevel(score: number): RiskLevel {
@@ -85,42 +83,7 @@ export async function POST(req: NextRequest) {
     timestamp: new Date().toISOString(),
   }
 
-  // ── Step 4: Persist violation (only if risk > 0) ───────────────────────────
-  if (finalScore > 0) {
-    const issueTypes = [...new Set(allIssues.map((i) => i.type))].join(',')
-    const promptSnippet = finalRedacted.slice(0, 120)
-
-    try {
-      const saved = await db.violation.create({
-        data: {
-          userId: userId ?? null,
-          promptSnippet,
-          redactedPrompt: finalRedacted.slice(0, 2000),
-          riskScore: finalScore,
-          riskLevel,
-          issueTypes,
-          issueCount: allIssues.length,
-        },
-      })
-
-      // ── Step 5: Push to SSE admin feed ──────────────────────────────────────
-      const record: ViolationRecord = {
-        id: saved.id,
-        userId: saved.userId ?? undefined,
-        promptSnippet: saved.promptSnippet,
-        redactedPrompt: saved.redactedPrompt,
-        riskScore: saved.riskScore,
-        riskLevel: saved.riskLevel,
-        issueTypes: saved.issueTypes,
-        issueCount: saved.issueCount,
-        createdAt: saved.createdAt.toISOString(),
-      }
-      broadcastViolation(record)
-    } catch (err) {
-      console.error('[PromptGuard] DB save error:', err)
-      // Don't fail the scan response if DB write fails
-    }
-  }
+  // Local-first mode: persistence is handled in the browser (localStorage).
 
   return NextResponse.json(result)
 }

@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import type { ScanResult } from '@/types'
 import RiskScore from './RiskScore'
 import ViolationCard from './ViolationCard'
+import { addViolation } from '@/lib/local-storage'
 
 const DEMO_PROMPTS = [
   `Help me debug this AWS Lambda. Here's my config:
@@ -46,6 +47,21 @@ export default function PromptScanner() {
 
       const data: ScanResult = await res.json()
       setResult(data)
+
+      if (data.riskScore > 0) {
+        const issueTypes = [...new Set(data.issues.map((i) => i.type))].join(',')
+        addViolation({
+          id: data.id,
+          userId: null,
+          promptSnippet: data.redactedPrompt.slice(0, 120),
+          redactedPrompt: data.redactedPrompt,
+          riskScore: data.riskScore,
+          riskLevel: data.riskLevel,
+          issueTypes,
+          issueCount: data.issues.length,
+          createdAt: data.timestamp,
+        })
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error')
     } finally {

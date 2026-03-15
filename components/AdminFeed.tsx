@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import type { ViolationRecord, SSEEvent } from '@/types'
+import { useEffect, useMemo, useState } from 'react'
+import type { ViolationRecord } from '@/types'
 import { formatDistanceToNow } from 'date-fns'
+import { clearViolations, getViolations, removeViolation } from '@/lib/local-storage'
 
 const LEVEL_STYLES: Record<string, { badge: string; dot: string }> = {
   critical: { badge: 'bg-red-600/20 text-red-400 border-red-600/40',   dot: 'bg-red-500' },
@@ -13,43 +14,34 @@ const LEVEL_STYLES: Record<string, { badge: string; dot: string }> = {
 }
 
 interface Props {
-  initial: ViolationRecord[]
-  totalCount: number
+  initial?: ViolationRecord[]
 }
 
-export default function AdminFeed({ initial, totalCount }: Props) {
+export default function AdminFeed({ initial = [] }: Props) {
   const [violations, setViolations] = useState<ViolationRecord[]>(initial)
-  const [liveCount, setLiveCount] = useState(0)
-  const [connected, setConnected] = useState(false)
   const [filter, setFilter] = useState<string>('all')
-  const eventSourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
-    const es = new EventSource('/api/events')
-    eventSourceRef.current = es
+    const load = () => setViolations(getViolations())
+    load()
 
-    es.onopen = () => setConnected(true)
-    es.onerror = () => setConnected(false)
-
-    es.onmessage = (e) => {
-      try {
-        const event: SSEEvent = JSON.parse(e.data)
-        if (event.type === 'violation' && event.data) {
-          setViolations((prev) => [event.data!, ...prev].slice(0, 100))
-          setLiveCount((n) => n + 1)
-        }
-      } catch { /* malformed event */ }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'prompt_guard_violations_v1') load()
     }
 
+    window.addEventListener('storage', onStorage)
+    const poll = setInterval(load, 1000)
+
     return () => {
-      es.close()
-      setConnected(false)
+      window.removeEventListener('storage', onStorage)
+      clearInterval(poll)
     }
   }, [])
 
-  const displayed = filter === 'all'
-    ? violations
-    : violations.filter((v) => v.riskLevel === filter)
+  const displayed = useMemo(() => {
+    if (filter === 'all') return violations
+    return violations.filter((v) => v.riskLevel === filter)
+  }, [violations, filter])
 
   const totals = violations.reduce(
     (acc, v) => { acc[v.riskLevel] = (acc[v.riskLevel] ?? 0) + 1; return acc },
@@ -61,15 +53,23 @@ export default function AdminFeed({ initial, totalCount }: Props) {
       {/* Connection indicator + live counter */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
-          <span className="text-xs text-gray-400">{connected ? 'Live feed connected' : 'Connecting…'}</span>
-          {liveCount > 0 && (
-            <span className="text-xs px-2 py-0.5 bg-blue-600/20 text-blue-400 rounded-full border border-blue-500/30">
-              +{liveCount} live
-            </span>
+          <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-xs text-gray-400">Local browser storage active</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">{violations.length} total violations</span>
+          {violations.length > 0 && (
+            <button
+              onClick={() => {
+                clearViolations()
+                setViolations([])
+              }}
+              className="text-xs px-2 py-1 rounded border border-red-500/30 text-red-300 hover:bg-red-500/10"
+            >
+              Clear all
+            </button>
           )}
         </div>
-        <span className="text-xs text-gray-500">{totalCount + liveCount} total violations</span>
       </div>
 
       {/* Stats strip */}
@@ -111,12 +111,10 @@ export default function AdminFeed({ initial, totalCount }: Props) {
         {displayed.map((v, i) => {
           const s = LEVEL_STYLES[v.riskLevel] ?? LEVEL_STYLES.low
           const types = v.issueTypes.split(',').filter(Boolean)
-          const isNew = i < liveCount
           return (
             <div
               key={v.id}
-              className={`rounded-xl bg-gray-800/60 border border-gray-700 p-4 space-y-2
-                ${isNew ? 'animate-slide-up border-blue-500/40' : ''}`}
+              className="rounded-xl bg-gray-800/60 border border-gray-700 p-4 space-y-2"
             >
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -142,6 +140,18 @@ export default function AdminFeed({ initial, totalCount }: Props) {
               <p className="text-xs text-gray-400 font-mono leading-relaxed truncate">
                 {v.promptSnippet}
               </p>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    removeViolation(v.id)
+                    setViolations((prev) => prev.filter((x) => x.id !== v.id))
+                  }}
+                  className="text-xs px-2 py-1 rounded border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           )
         })}

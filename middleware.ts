@@ -1,5 +1,4 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
 
 // Public routes — no auth required
 const isPublicRoute = createRouteMatcher([
@@ -10,10 +9,16 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
 ])
 
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
+const CLERK_CONFIGURED = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
+)
+
 export default clerkMiddleware((auth, req) => {
-  // If DEMO_MODE is enabled, skip all auth checks
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
-    return NextResponse.next()
+  // Guard against edge middleware crashes on deployments missing Clerk env.
+  // In demo mode (or missing Clerk config), allow pass-through auth.
+  if (DEMO_MODE || !CLERK_CONFIGURED) {
+    return
   }
 
   if (!isPublicRoute(req)) {

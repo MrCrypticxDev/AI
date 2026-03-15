@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { PolicyRule } from '@/types'
+import { deletePolicy, getPolicies, savePolicies } from '@/lib/local-storage'
 
 interface Props {
-  initial: PolicyRule[]
+  initial?: PolicyRule[]
 }
 
 const SEVERITY_OPTIONS = ['low', 'medium', 'high', 'critical']
@@ -23,11 +24,16 @@ const ACTION_BADGE: Record<string, string> = {
   block:  'bg-red-400/10 text-red-300',
 }
 
-export default function PolicyBuilder({ initial }: Props) {
+export default function PolicyBuilder({ initial = [] }: Props) {
   const [policies, setPolicies] = useState<PolicyRule[]>(initial)
   const [form, setForm] = useState({ name: '', pattern: '', type: 'regex', severity: 'medium', action: 'warn' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    const stored = getPolicies()
+    if (stored.length > 0) setPolicies(stored)
+  }, [])
 
   async function handleAdd() {
     if (!form.name.trim() || !form.pattern.trim()) {
@@ -37,17 +43,29 @@ export default function PolicyBuilder({ initial }: Props) {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch('/api/policies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? 'Failed to save')
+      if (form.type === 'regex') {
+        try {
+          new RegExp(form.pattern)
+        } catch {
+          throw new Error('Invalid regex pattern')
+        }
       }
-      const created: PolicyRule = await res.json()
-      setPolicies((prev) => [created, ...prev])
+
+      const created: PolicyRule = {
+        id: crypto.randomUUID(),
+        name: form.name.trim(),
+        pattern: form.pattern.trim(),
+        type: form.type as PolicyRule['type'],
+        severity: form.severity as PolicyRule['severity'],
+        action: form.action as PolicyRule['action'],
+        enabled: true,
+        createdAt: new Date().toISOString(),
+      }
+      setPolicies((prev) => {
+        const next = [created, ...prev]
+        savePolicies(next)
+        return next
+      })
       setForm({ name: '', pattern: '', type: 'regex', severity: 'medium', action: 'warn' })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error')
@@ -57,21 +75,16 @@ export default function PolicyBuilder({ initial }: Props) {
   }
 
   async function handleToggle(policy: PolicyRule) {
-    const res = await fetch('/api/policies', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: policy.id, enabled: !policy.enabled }),
+    setPolicies((prev) => {
+      const next = prev.map((p) => (p.id === policy.id ? { ...p, enabled: !policy.enabled } : p))
+      savePolicies(next)
+      return next
     })
-    if (res.ok) {
-      setPolicies((prev) => prev.map((p) => (p.id === policy.id ? { ...p, enabled: !p.enabled } : p)))
-    }
   }
 
   async function handleDelete(id: string) {
-    const res = await fetch(`/api/policies?id=${id}`, { method: 'DELETE' })
-    if (res.ok) {
-      setPolicies((prev) => prev.filter((p) => p.id !== id))
-    }
+    deletePolicy(id)
+    setPolicies((prev) => prev.filter((p) => p.id !== id))
   }
 
   return (

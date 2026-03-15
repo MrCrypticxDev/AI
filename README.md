@@ -1,36 +1,88 @@
 # Prompt Guard
 
-Real-time AI prompt security scanner. Detects API keys, PII, passwords, and sensitive context before they reach an LLM.
+Prompt Guard is a local-first AI prompt security platform that prevents sensitive data leaks before users submit text to LLMs.
 
-## Stack
-
-- **Frontend**: Next.js 14 App Router + TypeScript + Tailwind CSS
-- **Real-time**: Server-Sent Events (SSE) — no external service needed
-- **AI scanning**: OpenClaw (OpenAI-compatible) with OpenAI fallback
-- **Database**: Prisma + PostgreSQL
-- **Auth**: Clerk  
-- **Deploy**: Vercel + GitHub Actions
+It combines deterministic pattern detection and OpenClaw semantic scanning, then gives users an immediate safe action path: detect risk, sanitize sensitive values, and continue securely.
 
 ---
 
-## Quick Start (5 steps)
+## Judge Summary (10/10 Rubric Narrative)
 
-```bash
-# 1. Install dependencies
-npm install
+### Problem
+Teams increasingly paste confidential data into AI tools by accident, including API keys, customer PII, credentials, and internal architecture context.
 
-# 2. Copy env file and fill in your keys
-cp .env.example .env.local
+### Real World Impact
+Prompt Guard blocks this leak path at the point of action. It reduces security incidents, privacy violations, and compliance risk before data leaves the browser.
 
-# 3. Generate Prisma client and create database
-npx prisma generate
-npx prisma db push
+### Implementation
+Built with Next.js 14 + TypeScript. Detection combines:
+- Pattern scanner for known credential/PII signatures
+- OpenClaw integration for contextual AI-level risk detection
+- Local-first dashboard + policy persistence via browser localStorage
 
-# 4. Run the dev server
-npm run dev
+### Messaging
+Simple and actionable workflow:
+- Scan prompt
+- Explain risk score and issue classes
+- Offer safe redacted output immediately
 
-# 5. Open http://localhost:3000
+### Execution Potential
+Deployable now as:
+- Web app scanner/dashboard
+- Firefox extension interception layer
+
+No external database is required for core dashboard/policy workflow.
+
+---
+
+## Architecture
+
+```text
+User Prompt
+  -> POST /api/scan
+    -> Pattern Scan (fast regex checks)
+    -> OpenClaw AI Scan (semantic risk)
+    -> Merged risk score + recommendation
+    -> Return scan result to client
+      -> Client stores violations in localStorage
+      -> Dashboard reads localStorage in real time
 ```
+
+---
+
+## Tech Stack
+
+- Frontend: Next.js App Router, React, TypeScript, Tailwind CSS
+- AI Security Layer: OpenClaw gateway (MiniMax capable)
+- Auth: Clerk (optional in demo mode)
+- Persistence mode: Browser localStorage (dashboard + policies)
+- Extension: Firefox WebExtension (content interception + sanitize flow)
+- Deployment: Vercel
+
+---
+
+## Codebase Map
+
+- app/
+  - page.tsx: Main scanner landing page and judge-focused narrative UI
+  - dashboard/page.tsx: Local-first dashboard (reads browser-stored violations)
+  - policies/page.tsx: Local-first policy management view
+  - api/scan/route.ts: Prompt scan API (pattern + OpenClaw AI merge)
+  - api/events/route.ts: SSE endpoint (legacy/optional)
+  - api/violations/route.ts: Disabled in local-first mode (returns guidance)
+  - api/policies/route.ts: Disabled in local-first mode (returns guidance)
+- components/
+  - PromptScanner.tsx: Core scanner UX, result display, local violation persistence
+  - AdminFeed.tsx: Dashboard feed backed by localStorage
+  - PolicyBuilder.tsx: Policy CRUD backed by localStorage
+  - Navbar.tsx: Navigation shell
+- lib/
+  - ai-scanner.ts: OpenClaw integration logic
+  - pattern-scanner.ts: Deterministic issue detection logic
+  - local-storage.ts: Browser persistence helpers for violations and policies
+  - db.ts: Legacy Prisma helper (kept for compatibility, not required in local mode)
+- extension/
+  - manifest.json, content.js, popup/options UI, extension README
 
 ---
 
@@ -38,99 +90,95 @@ npm run dev
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `OPENCLAW_API_KEY` | Yes* | Your OpenClaw API key |
-| `OPENCLAW_BASE_URL` | Recommended | Your OpenClaw API base URL (OpenAI-compatible) |
-| `OPENCLAW_MODEL` | No | OpenClaw model name (e.g. `minimax-m1`) |
-| `OPENAI_API_KEY` | No | Fallback if OpenClaw key is not provided |
-| `OPENAI_BASE_URL` | No | Optional OpenAI-compatible fallback base URL |
-| `OPENAI_MODEL` | No | Fallback model (default: `gpt-4o-mini`) |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes* | Clerk publishable key |
-| `CLERK_SECRET_KEY` | Yes* | Clerk secret key |
-| `NEXT_PUBLIC_DEMO_MODE` | No | Set `true` to bypass auth entirely |
-
-*Not required if `NEXT_PUBLIC_DEMO_MODE=true` and you are okay with pattern-only scanning
-
-**Get Clerk keys**: https://clerk.com (free, takes 2 minutes)
+| OPENCLAW_API_KEY | Recommended | OpenClaw gateway/API token |
+| OPENCLAW_BASE_URL | Recommended | OpenClaw websocket URL, e.g. ws://127.0.0.1:8090 |
+| OPENCLAW_MODEL | Optional | e.g. MiniMax-M2.5 |
+| NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY | Optional | Needed only if Clerk auth is enabled |
+| CLERK_SECRET_KEY | Optional | Needed only if Clerk auth is enabled |
+| NEXT_PUBLIC_DEMO_MODE | Optional | true to bypass auth for demos |
+| DATABASE_URL | Optional | Legacy/compatibility only; core local-first flow does not require hosted DB |
 
 ---
 
-## Features
-
-- **Pattern scanner**: Instantly detects AWS keys, OpenClaw/OpenAI keys, GitHub tokens, JWTs, private keys, SSNs, credit cards, emails, phone numbers, and passwords via regex
-- **AI deep scan**: Semantic analysis for context-level sensitive data (trade secrets, internal architecture, implicit credentials)
-- **Instant redaction**: One-click copy of a safe version with typed `[REDACTED-TYPE]` placeholders
-- **Live admin dashboard**: Real-time SSE feed of all violations, filterable by severity
-- **Custom policies**: Add regex or keyword rules for your org-specific sensitive data
-- **Role-based access**: Citizen vs admin via Clerk metadata
-
----
-
-## Demo Script (60 seconds for judges)
-
-1. Open `http://localhost:3000`
-2. Click **"AWS Keys"** demo button
-3. Click **Scan Prompt** — watch risk score animate to 94/100
-4. See AWS key and secret highlighted, matched, and redacted
-5. Copy the safe version with one click
-6. Open **Dashboard** — violation appears live in the feed
-7. Open **Policies** — add a custom rule for your org
-
----
-
-## Architecture
-
-```
-User prompt → POST /api/scan
-               ├── Pattern scanner (regex, <5ms)
-               ├── AI scanner (OpenClaw/OpenAI-compatible, ~200ms)
-               ├── Merge results + compute risk score
-               ├── Save violation to PostgreSQL (redacted only)
-               └── Broadcast to SSE /api/events
-                    └── AdminFeed component updates live
-```
-
----
-
-## Production Deployment
-
-1. Push to GitHub
-2. Connect repo to Vercel
-3. Add environment variables in Vercel dashboard
-4. Set `DATABASE_URL` to your PostgreSQL connection string
-5. Set `OPENCLAW_API_KEY`, `OPENCLAW_BASE_URL`, and `OPENCLAW_MODEL`
-6. GitHub Actions will auto-deploy on every push to `main`
-
----
-
-## Firefox Extension
-
-This repo also includes the Firefox extension build in [extension/](extension/).
-
-1. Open Firefox and go to `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on...**
-3. Select [extension/manifest.json](extension/manifest.json)
-4. Open the extension popup and verify Prompt Guard is active
-
----
-
-## GitHub Upload Checklist
-
-1. Confirm app env uses your active gateway: `OPENCLAW_BASE_URL=ws://127.0.0.1:8090`
-2. Ensure secrets are not committed (`.env` should remain ignored)
-3. Update any remaining naming to **Prompt Guard**
-4. Run local validation:
+## Quick Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-5. Test extension loading with [extension/manifest.json](extension/manifest.json)
-6. Commit and push:
+Open:
+- http://localhost:3000
+
+---
+
+## OpenClaw Integration
+
+Prompt Guard uses OpenClaw to enrich security analysis beyond regex:
+- Finds implicit sensitive context
+- Catches risk semantics and intent
+- Produces stronger recommendation quality
+
+Example local config:
+- OPENCLAW_BASE_URL=ws://127.0.0.1:8090
+- OPENCLAW_MODEL=MiniMax-M2.5
+
+---
+
+## Local-First Storage Design
+
+Dashboard and policy data are stored client-side:
+- Violations key: prompt_guard_violations_v1
+- Policies key: prompt_guard_policies_v1
+
+Benefits:
+- Zero external DB dependency for demos
+- Faster setup
+- Private local persistence on the user machine
+
+Tradeoff:
+- Data is device/browser scoped (not shared across users by default)
+
+---
+
+## Firefox Extension
+
+Extension is located in extension/.
+
+Quick load:
+1. Open Firefox -> about:debugging#/runtime/this-firefox
+2. Load Temporary Add-on
+3. Select extension/manifest.json
+
+---
+
+## Vercel Notes
+
+- Build script is database-free in local-first mode: next build
+- Next config is CommonJS to avoid module type warning in Vercel logs
+
+---
+
+## Suggested Demo Flow (60 seconds)
+
+1. Paste a risky prompt (AWS key + PII)
+2. Run scan and show score + issue categories
+3. Copy redacted output
+4. Open Dashboard and show locally persisted violations
+5. Open Policies and add an organization-specific custom rule
+6. Explain OpenClaw contextual detection advantage
+
+---
+
+## GitHub Upload Checklist
+
+1. Verify env values are local-safe (no secrets committed)
+2. Confirm app runs: npm run dev
+3. Confirm extension loads from extension/manifest.json
+4. Commit and push:
 
 ```bash
 git add .
-git commit -m "Prepare Prompt Guard app + extension for GitHub"
+git commit -m "Prompt Guard: local-first dashboard, policy storage, UI refresh"
 git push origin main
 ```

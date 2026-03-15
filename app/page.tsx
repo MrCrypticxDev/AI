@@ -3,100 +3,130 @@ import PromptScanner from '@/components/PromptScanner'
 const FEATURES = [
   {
     icon: '🔑',
-    title: 'API Key Detection',
-    desc: 'Catches AWS, OpenClaw/OpenAI-style keys, GitHub tokens, JWTs, private keys, and generic secrets using pattern matching.',
+    title: 'Credential Leak Detection',
+    desc: 'Detects API keys, cloud credentials, tokens, and private key material before prompts leave the browser.',
   },
   {
     icon: '🪪',
-    title: 'PII Scanning',
-    desc: 'Flags Social Security numbers, credit card numbers, email addresses, and phone numbers before they leave your org.',
+    title: 'PII Protection Layer',
+    desc: 'Flags SSNs, card numbers, phone numbers, and email addresses with redaction-ready output.',
   },
   {
-    icon: '🤖',
-    title: 'AI-Powered Context',
-    desc: 'Deep semantic analysis finds sensitive context that regex can\'t: trade secrets, internal architecture, and implicit credentials.',
+    icon: '🧠',
+    title: 'OpenClaw AI Context Scan',
+    desc: 'Uses OpenClaw integration to catch semantic risk patterns regex cannot see, including sensitive intent.',
   },
   {
-    icon: '⚡',
-    title: 'Instant Redaction',
-    desc: 'Get a safe version of your prompt in milliseconds with sensitive values replaced by clear, typed placeholders.',
+    icon: '🧹',
+    title: 'Sanitize Before Send',
+    desc: 'Generates a safe version instantly with structured redaction tags so users can keep momentum.',
   },
   {
-    icon: '📊',
-    title: 'Live Admin Dashboard',
-    desc: 'Real-time feed of all flagged prompts across your org. Filter by severity, track trends, spot repeat offenders.',
+    icon: '💾',
+    title: 'Local-First Dashboard',
+    desc: 'Stores policy and violation activity in browser localStorage. No external database required.',
   },
   {
-    icon: '🛠️',
-    title: 'Custom Policies',
-    desc: 'Define your own regex or keyword rules: internal hostnames, project codenames, proprietary identifiers.',
+    icon: '🎯',
+    title: 'Custom Rule Engine',
+    desc: 'Create organization-specific policies for internal code names, hostnames, product IDs, and patterns.',
   },
+]
+
+const SCORE_PILLARS = [
+  { label: 'Problem', text: 'Prompt leakage of secrets and PII into AI workflows.' },
+  { label: 'Real World Impact', text: 'Pre-send prevention reduces legal, privacy, and security incidents.' },
+  { label: 'Implementation', text: 'Next.js + OpenClaw + local-first storage with real-time UX.' },
+  { label: 'Messaging', text: 'Simple workflow: detect, explain risk, sanitize, proceed safely.' },
+  { label: 'Execution Potential', text: 'Deployable today as web app + Firefox extension for team rollout.' },
 ]
 
 export default function HomePage() {
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12 space-y-16">
-      {/* Hero */}
-      <div className="text-center space-y-4">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-600/10 border border-blue-500/20 text-blue-400 text-xs font-medium mb-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-          Real-time AI Security Layer
-        </div>
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
-          Stop leaking secrets into<br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">
-            AI prompts
-          </span>
-        </h1>
-        <p className="text-gray-400 max-w-xl mx-auto text-base leading-relaxed">
-          Prompt Guard scans every prompt for API keys, PII, passwords, and sensitive context
-          before it reaches an LLM — in under 300ms.
-        </p>
-      </div>
+    <div className="relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(59,130,246,0.20),transparent_35%),radial-gradient(circle_at_80%_5%,rgba(20,184,166,0.18),transparent_30%),radial-gradient(circle_at_50%_95%,rgba(251,191,36,0.12),transparent_30%)]" />
 
-      {/* Scanner */}
-      <div className="bg-gray-900/60 rounded-2xl border border-gray-700 p-6 shadow-xl">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-8 w-8 rounded-lg bg-blue-600/20 flex items-center justify-center text-blue-400">
-            🔍
+      <div className="relative max-w-6xl mx-auto px-4 py-12 space-y-16">
+        <section className="text-center space-y-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700 text-cyan-300 text-xs font-semibold tracking-wide">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            Prompt Guard - Local-First AI Security
           </div>
-          <div>
-            <h2 className="text-base font-semibold text-white">Prompt Scanner</h2>
-            <p className="text-xs text-gray-500">Paste any prompt. Results in seconds.</p>
-          </div>
-        </div>
-        <PromptScanner />
-      </div>
 
-      {/* Features */}
-      <div>
-        <h2 className="text-xl font-bold text-center mb-8 text-white">Everything you need to stay secure</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-xl bg-gray-800/40 border border-gray-700 p-5 space-y-2 hover:border-gray-600 transition-colors">
-              <span className="text-2xl">{f.icon}</span>
-              <h3 className="font-semibold text-white text-sm">{f.title}</h3>
-              <p className="text-xs text-gray-400 leading-relaxed">{f.desc}</p>
+          <h1 className="text-4xl sm:text-6xl font-semibold tracking-tight text-white leading-tight">
+            Stop sensitive data leaks
+            <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-300 to-amber-200">
+              before prompts are sent
+            </span>
+          </h1>
+
+          <p className="text-slate-300 max-w-2xl mx-auto text-base sm:text-lg leading-relaxed">
+            Prompt Guard is a pre-send safety layer for AI workflows. It combines deterministic pattern scanning with OpenClaw semantic analysis, then gives users immediate sanitize controls and a modern local-first security dashboard.
+          </p>
+
+          <div className="flex flex-wrap justify-center gap-2 pt-2">
+            {['OpenClaw Integrated', 'No External DB Required', 'Policy Driven', 'Hackathon Ready'].map((tag) => (
+              <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-slate-800/70 border border-slate-600 text-slate-300">
+                {tag}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <section className="bg-slate-950/75 rounded-2xl border border-slate-700 shadow-2xl p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="h-9 w-9 rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center text-cyan-300">
+              🔍
             </div>
-          ))}
-        </div>
-      </div>
+            <div>
+              <h2 className="text-lg font-semibold text-white">Prompt Scanner</h2>
+              <p className="text-xs text-slate-400">Paste prompt text, scan risk, and copy sanitized output in seconds.</p>
+            </div>
+          </div>
+          <PromptScanner />
+        </section>
 
-      {/* CTA */}
-      <div className="text-center bg-gradient-to-r from-blue-900/30 to-cyan-900/30 rounded-2xl border border-blue-700/30 p-8 space-y-3">
-        <h3 className="text-lg font-bold text-white">Monitor your whole team in real time</h3>
-        <p className="text-sm text-gray-400">See every flagged prompt as it happens. Filter by severity. Export reports.</p>
-        <a
-          href="/dashboard"
-          className="inline-block mt-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors shadow-lg shadow-blue-500/20"
-        >
-          Open Dashboard →
-        </a>
-      </div>
+        <section className="space-y-6">
+          <h2 className="text-2xl font-semibold text-white text-center">Built for security judges and real teams</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {FEATURES.map((f) => (
+              <div key={f.title} className="rounded-xl bg-slate-900/70 border border-slate-700 p-5 hover:border-cyan-500/40 transition-colors">
+                <div className="text-2xl mb-3">{f.icon}</div>
+                <h3 className="font-semibold text-white text-sm mb-2">{f.title}</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <footer className="text-center text-xs text-gray-600 pb-4">
-        Built at a hackathon · Prompt Guard © 2026
-      </footer>
+        <section className="rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-900/20 via-slate-900/60 to-cyan-900/20 p-6 sm:p-8">
+          <h3 className="text-xl font-semibold text-white mb-4">Scoring Narrative (10/10 Framework)</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {SCORE_PILLARS.map((p) => (
+              <div key={p.label} className="rounded-lg bg-slate-900/60 border border-slate-700 p-3">
+                <p className="text-xs uppercase tracking-wide text-amber-300 font-semibold">{p.label}</p>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">{p.text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="text-center bg-slate-900/70 rounded-2xl border border-slate-700 p-8 space-y-3">
+          <h3 className="text-lg font-semibold text-white">Ready for live judging</h3>
+          <p className="text-sm text-slate-400">Scan, sanitize, and show policy + dashboard flow in one cohesive demo.</p>
+          <a
+            href="/dashboard"
+            className="inline-block mt-2 px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition-colors shadow-lg shadow-cyan-500/20"
+          >
+            Open Dashboard -&gt;
+          </a>
+        </section>
+
+        <footer className="text-center text-xs text-slate-500 pb-4">
+          Prompt Guard © 2026 - Classic reliability, modern security UX.
+        </footer>
+      </div>
     </div>
   )
 }
