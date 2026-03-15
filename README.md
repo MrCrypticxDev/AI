@@ -1,4 +1,4 @@
-# PromptGuard
+# Prompt Guard
 
 Real-time AI prompt security scanner. Detects API keys, PII, passwords, and sensitive context before they reach an LLM.
 
@@ -100,3 +100,37 @@ User prompt → POST /api/scan
 4. Set `DATABASE_URL` to your PostgreSQL connection string
 5. Set `OPENCLAW_API_KEY`, `OPENCLAW_BASE_URL`, and `OPENCLAW_MODEL`
 6. GitHub Actions will auto-deploy on every push to `main`
+
+---
+
+## Firefox Extension
+
+This repo also includes the Firefox extension build in [extension/](extension/).
+
+1. Open Firefox and go to `about:debugging#/runtime/this-firefox`
+2. Click **Load Temporary Add-on...**
+3. Select [extension/manifest.json](extension/manifest.json)
+4. Open the extension popup and verify Prompt Guard is active
+
+---
+
+## GitHub Upload Checklist
+
+1. Confirm app env uses your active gateway: `OPENCLAW_BASE_URL=ws://127.0.0.1:8090`
+2. Ensure secrets are not committed (`.env` should remain ignored)
+3. Update any remaining naming to **Prompt Guard**
+4. Run local validation:
+
+```bash
+npm install
+npm run dev
+```
+
+5. Test extension loading with [extension/manifest.json](extension/manifest.json)
+6. Commit and push:
+
+```bash
+git add .
+git commit -m "Prepare Prompt Guard app + extension for GitHub"
+git push origin main
+```

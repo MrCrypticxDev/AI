@@ -49,7 +49,7 @@ export default function HomePage() {
           </span>
         </h1>
         <p className="text-gray-400 max-w-xl mx-auto text-base leading-relaxed">
-          PromptGuard scans every prompt for API keys, PII, passwords, and sensitive context
+          Prompt Guard scans every prompt for API keys, PII, passwords, and sensitive context
           before it reaches an LLM — in under 300ms.
         </p>
       </div>
@@ -95,7 +95,7 @@ export default function HomePage() {
       </div>
 
       <footer className="text-center text-xs text-gray-600 pb-4">
-        Built at a hackathon · PromptGuard © 2026
+        Built at a hackathon · Prompt Guard © 2026
       </footer>
     </div>
   )

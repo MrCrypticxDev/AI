@@ -1,5 +1,5 @@
 /**
- * SecretWatch content script
+ * Prompt Guard content script
  * Intercepts Enter keypresses and form submits on any page,
  * scans for secrets, and shows a modal before allowing the send.
  */
@@ -177,7 +177,7 @@
             <span style="font-size:26px">🛡️</span>
             <div>
               <h2 style="margin:0;font-size:16px;font-weight:700">Secrets Detected</h2>
-              <p style="margin:2px 0 0;font-size:12px;color:#64748b">SecretWatch found sensitive content before sending</p>
+              <p style="margin:2px 0 0;font-size:12px;color:#64748b">Prompt Guard found sensitive content before sending</p>
             </div>
           </div>
           <ul style="margin:0 0 20px;padding-left:18px;line-height:1.7">${issueRows}</ul>
@@ -306,3 +306,4 @@
   // Attach to elements already on the page
   document.querySelectorAll('[contenteditable],textarea,input').forEach(attachTo);
 })();
+

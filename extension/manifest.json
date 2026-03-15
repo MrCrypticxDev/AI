@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "SecretWatch",
+    "name": "Prompt Guard",
     "version": "0.1.0",
     "description": "Silently watches every text field and blocks accidental secret leaks before you hit send.",
     "permissions": [
@@ -12,7 +12,7 @@
     ],
     "action": {
         "default_popup": "popup.html",
-        "default_title": "SecretWatch"
+        "default_title": "Prompt Guard"
     },
     "options_ui": {
         "page": "options.html",

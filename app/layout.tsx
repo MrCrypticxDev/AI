@@ -4,7 +4,7 @@ import './globals.css'
 import Navbar from '@/components/Navbar'
 
 export const metadata: Metadata = {
-  title: 'PromptGuard — AI Prompt Security Scanner',
+  title: 'Prompt Guard — AI Prompt Security Scanner',
   description: 'Real-time AI input security layer. Detect and redact API keys, PII, secrets, and sensitive data before they reach an LLM.',
 }
 

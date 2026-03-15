@@ -1,12 +1,12 @@
-# 🔒 SecretWatch
+# 🔒 Prompt Guard
 
-**SecretWatch** is a Firefox extension that silently watches every text field on every page and blocks accidental secret leaks before you hit send.
+**Prompt Guard** is a Firefox extension that silently watches every text field on every page and blocks accidental secret leaks before you hit send.
 
 ---
 
 ## What It Does
 
-When you press **Enter** in any chat box, search bar, or text field, SecretWatch scans your message for:
+When you press **Enter** in any chat box, search bar, or text field, Prompt Guard scans your message for:
 
 | Type | Examples |
 |------|---------|
@@ -33,7 +33,7 @@ If secrets are found, a modal pops up with three options:
 2. Click **This Firefox** in the left sidebar
 3. Click **Load Temporary Add-on...**
 4. Navigate to this `extension/` folder and select `manifest.json`
-5. SecretWatch is now active — the 🔒 icon appears in your toolbar
+5. Prompt Guard is now active — the 🔒 icon appears in your toolbar
 
 > **Note:** Temporary add-ons are removed when Firefox restarts. For a permanent install, the extension needs to be signed by Mozilla (see [Distribute your extension](https://extensionworkshop.com/documentation/publish/)).
 
@@ -45,24 +45,24 @@ Click the **🔒** icon in the Firefox toolbar to open the popup:
 
 - **Manual Scan** — paste any text and click **🔍 Scan** to see a risk report
 - **⚙ Settings** — configure your OpenClaw gateway (optional, for AI-enhanced scanning)
-- The **Active** indicator confirms SecretWatch is monitoring all tabs
+- The **Active** indicator confirms Prompt Guard is monitoring all tabs
 
 ---
 
 ## Settings (Optional AI Scanning)
 
-SecretWatch works fully offline using pattern matching with no configuration needed.
+Prompt Guard works fully offline using pattern matching with no configuration needed.
 
 Optionally, connect it to a local [OpenClaw](https://openclaw.dev) AI gateway for deeper analysis:
 
-1. Click **⚙ Settings** in the popup (or go to `about:addons` → SecretWatch → Preferences)
+1. Click **⚙ Settings** in the popup (or go to `about:addons` → Prompt Guard → Preferences)
 2. Fill in:
    - **Gateway URL** — your OpenClaw WebSocket endpoint (e.g. `ws://127.0.0.1:18789`)
    - **Gateway Token** — your `sk-cp-...` token
    - **Model** — model name (e.g. `MiniMax-M2.5`)
 3. Click **Save Settings**
 
-If no gateway is configured, SecretWatch falls back to pattern-only scanning which catches all the common secret formats.
+If no gateway is configured, Prompt Guard falls back to pattern-only scanning which catches all the common secret formats.
 
 ---
 
@@ -96,9 +96,26 @@ When you click **Sanitize & Send**:
 
 ## Supported Sites
 
-SecretWatch works on all sites that use standard `<textarea>`, `<input>`, or `contenteditable` elements, including:
+Prompt Guard works on all sites that use standard `<textarea>`, `<input>`, or `contenteditable` elements, including:
 
 - ChatGPT, Claude, Gemini, Copilot
 - Slack, Discord, Teams (web)
 - GitHub, GitLab issues/PRs
 - Any form or text input on any page
+
+---
+
+## GitHub Upload Checklist
+
+1. Verify naming is **Prompt Guard** in [manifest.json](manifest.json), [popup.html](popup.html), and [options.html](options.html)
+2. Confirm extension loads via `about:debugging` with no runtime errors
+3. Confirm at least one sanitize flow works on a test page
+4. Keep API tokens out of commits (do not commit local secret files)
+5. Commit and push:
+
+```bash
+git add extension/
+git commit -m "Finalize Prompt Guard Firefox extension"
+git push origin main
+```
+
