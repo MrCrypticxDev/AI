@@ -140,7 +140,7 @@ async function tryWebsocketChat(baseWsUrl: string, apiKey: string, safeInput: st
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(baseWsUrl, {
       headers: {
-        Origin: 'http://localhost:5000',
+        Origin: 'http://localhost:3000',
       },
     } as any)
     const connectId = Math.random().toString(36).slice(2)
@@ -247,8 +247,14 @@ async function tryOpenClawCli(apiKey: string, safeInput: string): Promise<string
     '20000',
   ]
 
-  // Try running OpenClaw CLI directly. If it is not on PATH, fall back to a known install location.
-  const candidates = [process.env.OPENCLAW_CLI_PATH ?? 'openclaw', 'D:\\Coding.Engines\\nodejs\\openclaw']
+  // Try running OpenClaw CLI directly. If it is not on PATH, fall back to known install locations.
+  // On Windows, execFile needs the .cmd wrapper — the bare script is a bash shebang and cannot be spawned.
+  const candidates = [
+    process.env.OPENCLAW_CLI_PATH ?? 'openclaw',
+    'openclaw.cmd',
+    'D:\\Coding.Engines\\nodejs\\openclaw.cmd',
+    'D:\\Coding.Engines\\nodejs\\openclaw',
+  ]
   let lastError: unknown = null
   for (const cmd of candidates) {
     try {
@@ -301,13 +307,18 @@ export async function runAIScan(
   const errors: string[] = []
   let lastAttemptUrl: string | null = null
 
+  // HTTP fetch requires http:// or https:// — normalise ws/wss so fetch() doesn't throw immediately
+  const httpBase = baseUrl
+    .replace(/^ws:\/\//, 'http://')
+    .replace(/^wss:\/\//, 'https://')
+
   for (const attempt of attempts) {
     const { headers, body } =
       attempt.kind === 'openai'
         ? buildOpenAIRequest(model, safeInput, apiKey)
         : buildAnthropicRequest(model, safeInput, apiKey)
 
-    const url = joinUrl(baseUrl, attempt.path)
+    const url = joinUrl(httpBase, attempt.path)
     lastAttemptUrl = url
 
     try {
