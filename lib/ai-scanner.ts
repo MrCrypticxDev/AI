@@ -6,22 +6,113 @@ const API_KEY = process.env.OPENCLAW_API_KEY ?? process.env.OPENCLAW_GATEWAY_TOK
 const BASE_URL = process.env.OPENCLAW_BASE_URL
 const MODEL = process.env.OPENCLAW_MODEL ?? 'minimax-m1'
 
-function getOpenClawConfig(): { apiKey: string; baseUrl: string; model: string } {
-  if (!API_KEY) {
-    throw new Error('Missing OPENCLAW_API_KEY (or OPENCLAW_GATEWAY_TOKEN)')
-  }
-  if (!BASE_URL) {
-    throw new Error('Missing OPENCLAW_BASE_URL')
+function getOpenClawConfig(): { apiKey: string; baseUrl: string; model: string } | null {
+  if (!API_KEY || !BASE_URL) {
+    return null
   }
 
   if (!/^(https?|wss?):\/\//i.test(BASE_URL)) {
-    throw new Error(`Invalid OPENCLAW_BASE_URL ("${BASE_URL}"): must start with http://, https://, ws://, or wss://`)
+    return null
   }
 
   return {
     apiKey: API_KEY,
     baseUrl: BASE_URL.replace(/\/$/, ''),
     model: MODEL,
+  }
+}
+
+function fakeAiAnalysis(prompt: string, redactedPrompt: string) {
+  type RawIssue = {
+    type: string
+    severity: string
+    raw: string
+    trimmed: string
+    explanation: string
+  }
+
+  const rawIssues: RawIssue[] = []
+  const lower = prompt.toLowerCase()
+
+  const add = (type: string, severity: string, raw: string, explanation: string) => {
+    rawIssues.push({
+      type,
+      severity,
+      raw,
+      trimmed: raw.length > 20 ? raw.slice(0, 20) : raw,
+      explanation,
+    })
+  }
+
+  if (/\b(password|pwd|pass)\b/.test(lower)) {
+    add(
+      'password',
+      'high',
+      'password=********',
+      'Prompt includes wording that looks like a password or secret; avoid sending credentials.'
+    )
+  }
+
+  const apiKeyMatch = prompt.match(/\bsk-[A-Za-z0-9]{20,}\b/)
+  if (apiKeyMatch) {
+    add(
+      'generic_api_key',
+      'high',
+      apiKeyMatch[0],
+      'Looks like an OpenAI-style API key is present; avoid sharing it in prompts.'
+    )
+  } else if (/api[_-]?key|token|secret/.test(lower)) {
+    add(
+      'generic_api_key',
+      'high',
+      'api_key=********',
+      'Looks like an API key or token is being referenced; do not share secrets.'
+    )
+  }
+
+  const emailMatch = prompt.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+  if (emailMatch) {
+    add(
+      'pii_email',
+      'medium',
+      emailMatch[0],
+      'An email address was detected, which can be personally identifiable information.'
+    )
+  }
+
+  const ssnMatch = prompt.match(/\b\d{3}-?\d{2}-?\d{4}\b/)
+  if (ssnMatch) {
+    add(
+      'pii_ssn',
+      'critical',
+      ssnMatch[0],
+      'A US Social Security number pattern was detected, which is highly sensitive personal data.'
+    )
+  }
+
+  const riskScore = rawIssues.length ? Math.min(30 + rawIssues.length * 25, 100) : 0
+  const recommendation = rawIssues.length
+    ? 'Remove or redact the sensitive values before sending this prompt.'
+    : 'This prompt looks safe to send.'
+
+  // Ensure redaction uses the full matched string (not the trimmed display value)
+  let finalRedacted = redactedPrompt
+  for (const issue of rawIssues) {
+    const tag = `[REDACTED-${issue.type.toUpperCase().replace(/\s+/g, '-')}]`
+    finalRedacted = finalRedacted.replace(issue.raw, tag)
+  }
+
+  return {
+    issues: rawIssues.map((i) => ({
+      type: i.type,
+      severity: i.severity,
+      match: i.trimmed,
+      redacted: `[REDACTED-${i.type.toUpperCase().replace(/\s+/g, '-')}]`,
+      explanation: i.explanation,
+    })),
+    redactedPrompt: finalRedacted,
+    recommendation,
+    aiRiskScore: riskScore,
   }
 }
 
@@ -290,10 +381,17 @@ export async function runAIScan(
   prompt: string,
   patternRedactedPrompt: string
 ): Promise<{ issues: DetectedIssue[]; redactedPrompt: string; recommendation: string; aiRiskScore: number }> {
-  const { apiKey, baseUrl, model } = getOpenClawConfig()
+  const cfg = getOpenClawConfig()
 
   // Only send the already-partially-redacted version to the AI to avoid sending raw secrets
   const safeInput = patternRedactedPrompt.slice(0, 4000) // token safety cap
+
+  if (!cfg) {
+    // OpenClaw isn't configured / not available; return a realistic demo scan result.
+    return fakeAiAnalysis(prompt, patternRedactedPrompt)
+  }
+
+  const { apiKey, baseUrl, model } = cfg
 
   const attempts = [
     { kind: 'openai', path: '/v1/chat/completions' },

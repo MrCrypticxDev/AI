@@ -1,7 +1,10 @@
+let storedToken = ''
+
 async function load() {
   const v = await browser.storage.local.get(['openclawBaseUrl', 'openclawToken', 'openclawModel']);
+  storedToken = v.openclawToken || ''
   document.getElementById('baseUrl').value = v.openclawBaseUrl || 'ws://127.0.0.1:18789';
-  document.getElementById('token').value = v.openclawToken || '';
+  document.getElementById('token').value = storedToken ? '********' : ''
   document.getElementById('model').value = v.openclawModel || 'MiniMax-M2.5';
   await renderDisabledHosts();
 }
@@ -37,11 +40,25 @@ async function renderDisabledHosts() {
 }
 
 document.getElementById('save').addEventListener('click', async () => {
+  const tokenField = document.getElementById('token')
+  const tokenValue = tokenField.value.trim()
+  const tokenToSave = tokenValue === '********' ? storedToken : tokenValue
+
   await browser.storage.local.set({
     openclawBaseUrl: document.getElementById('baseUrl').value,
-    openclawToken: document.getElementById('token').value,
+    openclawToken: tokenToSave,
     openclawModel: document.getElementById('model').value,
   });
+
+  if (tokenToSave !== storedToken) {
+    storedToken = tokenToSave
+  }
+
+  // Keep the token masked after save
+  if (storedToken) {
+    tokenField.value = '********'
+  }
+
   const status = document.getElementById('status');
   status.textContent = 'Saved!';
   setTimeout(() => { status.textContent = ''; }, 2000);
