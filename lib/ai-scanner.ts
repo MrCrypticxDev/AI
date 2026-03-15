@@ -1,0 +1,391 @@
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import type { DetectedIssue } from '@/types'
+
+const API_KEY = process.env.OPENCLAW_API_KEY ?? process.env.OPENCLAW_GATEWAY_TOKEN
+const BASE_URL = process.env.OPENCLAW_BASE_URL
+const MODEL = process.env.OPENCLAW_MODEL ?? 'minimax-m1'
+
+function getOpenClawConfig(): { apiKey: string; baseUrl: string; model: string } {
+  if (!API_KEY) {
+    throw new Error('Missing OPENCLAW_API_KEY (or OPENCLAW_GATEWAY_TOKEN)')
+  }
+  if (!BASE_URL) {
+    throw new Error('Missing OPENCLAW_BASE_URL')
+  }
+
+  if (!/^(https?|wss?):\/\//i.test(BASE_URL)) {
+    throw new Error(`Invalid OPENCLAW_BASE_URL ("${BASE_URL}"): must start with http://, https://, ws://, or wss://`)
+  }
+
+  return {
+    apiKey: API_KEY,
+    baseUrl: BASE_URL.replace(/\/$/, ''),
+    model: MODEL,
+  }
+}
+
+const SYSTEM_PROMPT = `You are a security AI that analyzes text prompts for sensitive information leakage.
+
+Your job is to find:
+- API keys, tokens, credentials, passwords
+- Personally identifiable information (PII): SSN, passport, credit cards, full names + addresses
+- Company trade secrets, internal architecture, proprietary code
+- Internal URLs, hostnames, database connection strings
+- Any context that would be dangerous if seen by a third-party AI
+
+IMPORTANT RULES:
+- Only flag genuinely sensitive real-world data, not made-up examples clearly labeled as mock/fake/example
+- Be precise — do not over-flag generic technical content
+- The "match" field should show only the first 20 characters of the sensitive value
+
+Respond ONLY with valid JSON matching this exact shape:
+{
+  "riskScore": <number 0-100>,
+  "aiIssues": [
+    {
+      "type": "api_key | pii | credentials | code_secret | sensitive_context",
+      "severity": "low | medium | high | critical",
+      "match": "<first 20 chars of the sensitive value>",
+      "explanation": "<one sentence why this is risky>"
+    }
+  ],
+  "redactedPrompt": "<full prompt with sensitive parts replaced by [REDACTED-TYPE] tags>",
+  "recommendation": "<1-2 sentence advice on how to rewrite this prompt safely>"
+}
+
+If nothing sensitive is found, return: {"riskScore":0,"aiIssues":[],"redactedPrompt":"<original>","recommendation":"This prompt looks safe to send."}`
+
+interface AIAnalysis {
+  riskScore: number
+  aiIssues: Array<{
+    type: string
+    severity: string
+    match: string
+    explanation: string
+  }>
+  redactedPrompt: string
+  recommendation: string
+}
+
+function joinUrl(base: string, path: string): string {
+  return `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+}
+
+function buildOpenAIRequest(model: string, safeInput: string, apiKey: string): { headers: Record<string, string>; body: string } {
+  return {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'x-api-key': apiKey,
+      'x-openclaw-token': apiKey,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `Analyze this prompt:\n\n${safeInput}` },
+      ],
+    }),
+  }
+}
+
+function buildAnthropicRequest(model: string, safeInput: string, apiKey: string): { headers: Record<string, string>; body: string } {
+  return {
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1200,
+      temperature: 0,
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content:
+            `Analyze this prompt:\n\n${safeInput}\n\n` +
+            'Return ONLY valid JSON with keys: riskScore, aiIssues, redactedPrompt, recommendation.',
+        },
+      ],
+    }),
+  }
+}
+
+function extractModelText(responseJson: unknown): string {
+  const parsed = responseJson as {
+    choices?: Array<{ message?: { content?: string } }>
+    content?: Array<{ type?: string; text?: string }>
+  }
+
+  const openAIText = parsed.choices?.[0]?.message?.content
+  if (typeof openAIText === 'string' && openAIText.trim().length > 0) {
+    return openAIText
+  }
+
+  const anthropicText = parsed.content?.find((c) => c.type === 'text')?.text
+  if (typeof anthropicText === 'string' && anthropicText.trim().length > 0) {
+    return anthropicText
+  }
+
+  return '{}'
+}
+
+async function tryWebsocketChat(baseWsUrl: string, apiKey: string, safeInput: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(baseWsUrl, {
+      headers: {
+        Origin: 'http://localhost:5000',
+      },
+    } as any)
+    const connectId = Math.random().toString(36).slice(2)
+    const chatId = Math.random().toString(36).slice(2)
+
+    const timeout = setTimeout(() => {
+      ws.close()
+      reject(new Error('ws timeout'))
+    }, 20000)
+
+    const cleanup = () => {
+      clearTimeout(timeout)
+      ws.close()
+    }
+
+    const sendConnect = () => {
+      const connectPayload = {
+        type: 'req',
+        id: connectId,
+        method: 'connect',
+        params: {
+          minProtocol: 3,
+          maxProtocol: 3,
+          client: {
+            id: 'openclaw-control-ui',
+            version: 'control-ui',
+            platform: 'node',
+            mode: 'webchat',
+          },
+          role: 'operator',
+          scopes: ['operator.admin', 'operator.approvals', 'operator.pairing'],
+          auth: { token: apiKey },
+        },
+      }
+      ws.send(JSON.stringify(connectPayload))
+    }
+
+    const sendChat = () => {
+      const chatPayload = {
+        type: 'req',
+        id: chatId,
+        method: 'chat.send',
+        params: {
+          message: safeInput,
+          deliver: false,
+        },
+      }
+      ws.send(JSON.stringify(chatPayload))
+    }
+
+    ws.addEventListener('open', () => {
+      sendConnect()
+    })
+
+    ws.addEventListener('message', (event) => {
+      try {
+        const msg = JSON.parse(String(event.data))
+        if (msg.type === 'res' && msg.id === connectId) {
+          if (msg.ok) {
+            sendChat()
+          } else {
+            cleanup()
+            reject(new Error(msg.error?.message ?? 'connect failed'))
+          }
+        }
+        if (msg.type === 'res' && msg.id === chatId) {
+          cleanup()
+          if (msg.ok) {
+            resolve(JSON.stringify(msg.payload))
+          } else {
+            reject(new Error(msg.error?.message ?? 'chat.send failed'))
+          }
+        }
+      } catch {
+        // ignore invalid messages
+      }
+    })
+
+    ws.addEventListener('error', (err) => {
+      cleanup()
+      reject(new Error('ws error'))
+    })
+  })
+}
+
+const execFileAsync = promisify(execFile)
+
+async function tryOpenClawCli(apiKey: string, safeInput: string): Promise<string> {
+  const params = JSON.stringify({
+    message: safeInput,
+    deliver: false,
+  })
+
+  const args = [
+    'gateway',
+    'call',
+    'chat.send',
+    '--json',
+    '--params',
+    params,
+    '--token',
+    apiKey,
+    '--timeout',
+    '20000',
+  ]
+
+  // Try running OpenClaw CLI directly. If it is not on PATH, fall back to a known install location.
+  const candidates = [process.env.OPENCLAW_CLI_PATH ?? 'openclaw', 'D:\\Coding.Engines\\nodejs\\openclaw']
+  let lastError: unknown = null
+  for (const cmd of candidates) {
+    try {
+      const { stdout, stderr } = await execFileAsync(cmd, args, { windowsHide: true })
+      if (stderr) {
+        // Some OpenClaw CLI commands print warnings to stderr, ignore.
+      }
+      return stdout
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  const hint = `Ensure OpenClaw CLI is installed and on your PATH (or set OPENCLAW_CLI_PATH to the executable).`
+  const message = lastError instanceof Error ? `${lastError.message}. ${hint}` : hint
+  throw new Error(message)
+}
+
+async function getBaseUrlHint(baseUrl: string): Promise<string> {
+  try {
+    const res = await fetch(baseUrl)
+    const text = await res.text()
+    if (res.ok && /OpenClaw Control/i.test(text)) {
+      return ' OPENCLAW_BASE_URL appears to be the OpenClaw Control UI, not an LLM API endpoint. Point it to the OpenClaw gateway API root.'
+    }
+  } catch {
+    // Best-effort hint only.
+  }
+  return ''
+}
+
+export async function runAIScan(
+  prompt: string,
+  patternRedactedPrompt: string
+): Promise<{ issues: DetectedIssue[]; redactedPrompt: string; recommendation: string; aiRiskScore: number }> {
+  const { apiKey, baseUrl, model } = getOpenClawConfig()
+
+  // Only send the already-partially-redacted version to the AI to avoid sending raw secrets
+  const safeInput = patternRedactedPrompt.slice(0, 4000) // token safety cap
+
+  const attempts = [
+    { kind: 'openai', path: '/v1/chat/completions' },
+    { kind: 'openai', path: '/chat/completions' },
+    { kind: 'anthropic', path: '/v1/messages' },
+    { kind: 'anthropic', path: '/messages' },
+    { kind: 'anthropic', path: '/anthropic/v1/messages' },
+  ] as const
+
+  let raw = '{}'
+  const errors: string[] = []
+  let lastAttemptUrl: string | null = null
+
+  for (const attempt of attempts) {
+    const { headers, body } =
+      attempt.kind === 'openai'
+        ? buildOpenAIRequest(model, safeInput, apiKey)
+        : buildAnthropicRequest(model, safeInput, apiKey)
+
+    const url = joinUrl(baseUrl, attempt.path)
+    lastAttemptUrl = url
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body,
+      })
+
+      const responseText = await response.text()
+      if (!response.ok) {
+        errors.push(`${attempt.path} -> ${response.status}`)
+        continue
+      }
+
+      try {
+        const json = JSON.parse(responseText) as unknown
+        raw = extractModelText(json)
+        if (raw && raw !== '{}') {
+          break
+        }
+      } catch {
+        errors.push(`${attempt.path} -> invalid JSON response`)
+      }
+    } catch (err) {
+      errors.push(`${attempt.path} -> ${String(err)}`)
+    }
+  }
+
+  if (!raw || raw === '{}') {
+    const wsHint = await getBaseUrlHint(baseUrl)
+    const wsBase = baseUrl.startsWith('ws://') || baseUrl.startsWith('wss://')
+      ? baseUrl.replace(/\/$/, '')
+      : baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:').replace(/\/$/, '')
+
+    try {
+      raw = await tryWebsocketChat(wsBase, apiKey, safeInput)
+    } catch (wsErr) {
+      errors.push(`ws -> ${String(wsErr)}`)
+    }
+
+    if (!raw || raw === '{}') {
+      // Last-resort attempt via the OpenClaw CLI (uses gateway RPC)
+      try {
+        raw = await tryOpenClawCli(apiKey, safeInput)
+      } catch (cliErr) {
+        errors.push(`cli -> ${String(cliErr)}`)
+      }
+    }
+
+    if (!raw || raw === '{}') {
+      const hint = wsHint || ''
+      const last = lastAttemptUrl ? ` Last attempt: ${lastAttemptUrl}` : ''
+      throw new Error(
+        `OpenClaw request failed across endpoints: ${errors.join(', ')}.${hint}${last}`
+      )
+    }
+  }
+  let analysis: AIAnalysis
+
+  try {
+    analysis = JSON.parse(raw) as AIAnalysis
+  } catch {
+    return { issues: [], redactedPrompt: patternRedactedPrompt, recommendation: '', aiRiskScore: 0 }
+  }
+
+  const issues: DetectedIssue[] = (analysis.aiIssues ?? []).map((ai) => ({
+    type: ai.type,
+    severity: (ai.severity as DetectedIssue['severity']) ?? 'medium',
+    match: ai.match ?? '',
+    redacted: `[REDACTED-${ai.type.toUpperCase().replace(/\s+/g, '-')}]`,
+    explanation: ai.explanation ?? '',
+  }))
+
+  return {
+    issues,
+    redactedPrompt: analysis.redactedPrompt ?? patternRedactedPrompt,
+    recommendation: analysis.recommendation ?? '',
+    aiRiskScore: analysis.riskScore ?? 0,
+  }
+}

@@ -1,0 +1,35 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Stores flagged scan events (never stores the raw sensitive prompt)
+model Violation {
+  id             String   @id @default(cuid())
+  userId         String?
+  promptSnippet  String   // First 120 chars of the REDACTED prompt only
+  redactedPrompt String
+  riskScore      Int
+  riskLevel      String
+  issueTypes     String   // e.g. "aws_key,pii_email"
+  issueCount     Int      @default(0)
+  createdAt      DateTime @default(now())
+}
+
+// Custom detection policies created by the admin
+model Policy {
+  id        String   @id @default(cuid())
+  name      String
+  pattern   String
+  type      String   @default("regex")  // regex | keyword
+  severity  String   @default("medium") // low | medium | high | critical
+  action    String   @default("warn")   // warn | redact | block
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
