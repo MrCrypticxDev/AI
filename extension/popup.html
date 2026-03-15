@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SecretWatch</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            width: 360px;
+            min-height: 200px;
+        }
+
+        /* ── Header ── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px 12px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #1f6feb, #388bfd);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .brand-name {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .brand-sub {
+            font-size: 10px;
+            color: #8b949e;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: #0d2719;
+            border: 1px solid #1a7f37;
+            border-radius: 20px;
+            padding: 4px 10px;
+            font-size: 11px;
+            color: #3fb950;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            background: #3fb950;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        /* ── Body ── */
+        .body {
+            padding: 14px 16px;
+        }
+
+        .section-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 8px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            color: #e6edf3;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            padding: 10px 12px;
+            resize: none;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        textarea:focus {
+            border-color: #388bfd;
+        }
+
+        textarea::placeholder {
+            color: #484f58;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 9px 12px;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-primary {
+            background: #1f6feb;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #388bfd;
+        }
+
+        .btn-ghost {
+            background: #21262d;
+            color: #8b949e;
+            border: 1px solid #30363d;
+        }
+
+        .btn-ghost:hover {
+            background: #30363d;
+            color: #e6edf3;
+        }
+
+        /* ── Result ── */
+        .result-wrap {
+            margin-top: 14px;
+        }
+
+        #result {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11.5px;
+            color: #8b949e;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 150px;
+            overflow-y: auto;
+            min-height: 36px;
+        }
+
+        #result.has-issues {
+            color: #f97316;
+            border-color: #7c4a1a;
+        }
+
+        #result.clean {
+            color: #3fb950;
+            border-color: #1a7f37;
+        }
+
+        #result.error {
+            color: #f85149;
+            border-color: #6e1d1d;
+        }
+
+        /* ── Site row ── */
+        .site-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 9px 12px;
+            margin-bottom: 14px;
+        }
+
+        .site-status {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .site-status.active {
+            color: #3fb950;
+        }
+
+        .site-status.disabled {
+            color: #f85149;
+        }
+
+        .site-host {
+            font-size: 10px;
+            color: #484f58;
+            margin-top: 2px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 11px;
+        }
+
+        /* ── Footer ── */
+        .footer {
+            padding: 10px 16px;
+            border-top: 1px solid #21262d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .footer-hint {
+            font-size: 10px;
+            color: #484f58;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <div class="brand">
+            <div class="brand-icon">🔒</div>
+            <div>
+                <div class="brand-name">SecretWatch</div>
+                <div class="brand-sub">Secret Leak Protection</div>
+            </div>
+        </div>
+        <div class="status-pill">
+            <div class="status-dot"></div>
+            Active
+        </div>
+    </div>
+
+    <div class="body">
+        <div class="site-row" id="siteRow">
+            <div>
+                <div class="site-status active" id="siteStatus">🟢 Watching this site</div>
+                <div class="site-host" id="siteHost"></div>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="siteToggle">Disable here</button>
+        </div>
+        <div class="section-label">Manual Scan</div>
+        <textarea id="prompt" placeholder="Paste text to scan for secrets, keys, PII..."></textarea>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="scan">🔍 Scan</button>
+            <button class="btn btn-ghost" id="options">⚙ Settings</button>
+        </div>
+
+        <div class="result-wrap">
+            <div class="section-label">Result</div>
+            <pre id="result">Paste text above and click Scan.</pre>
+        </div>
+    </div>
+
+    <div class="footer">
+        <span class="footer-hint">SecretWatch monitors all tabs automatically</span>
+    </div>
+
+    <script src="scan.js"></script>
+</body>
+
+</html>
