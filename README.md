@@ -1,5 +1,7 @@
 # Prompt Guard
 
+**2026 Hackathon Project**
+
 Prompt Guard is a local-first AI prompt security platform that prevents sensitive data leaks before users submit text to LLMs.
 
 It combines deterministic pattern detection and OpenClaw semantic scanning, then gives users an immediate safe action path: detect risk, sanitize sensitive values, and continue securely.
@@ -112,16 +114,30 @@ Open:
 
 ---
 
-## OpenClaw Integration
+## OpenClaw Integration (Revamped)
 
-Prompt Guard uses OpenClaw to enrich security analysis beyond regex:
-- Finds implicit sensitive context
-- Catches risk semantics and intent
-- Produces stronger recommendation quality
+Prompt Guard now uses a hardened multi-path OpenClaw integration designed for hackathon demo reliability and production-readiness.
+
+What changed in the revamp:
+- Dynamic env resolution on each scan request (no stale token/base URL during dev hot reload cycles)
+- Multi-endpoint HTTP probing across OpenAI-style and Anthropic-style routes
+- Automatic protocol normalization (ws/wss to http/https for HTTP attempts)
+- Timeout-controlled HTTP requests with graceful fallback handling
+- WebSocket RPC fallback (`connect` + `chat.send`) when HTTP-style endpoints are unavailable
+- Optional OpenClaw CLI fallback (`OPENCLAW_CLI_PATH` or PATH binaries) as last resort
+- Defensive JSON extraction (handles fenced JSON and mixed text payloads)
+- Severity normalization (`low | medium | high | critical`) before app-level issue mapping
+
+Why this matters:
+- Better resilience when gateway modes differ between environments
+- Fewer false failures from format drift in model responses
+- Stable risk output for the dashboard and extension pipeline
 
 Example local config:
+- OPENCLAW_API_KEY=your_token_here
 - OPENCLAW_BASE_URL=ws://127.0.0.1:8090
 - OPENCLAW_MODEL=MiniMax-M2.5
+- OPENCLAW_CLI_PATH=openclaw.cmd (optional)
 
 ---
 

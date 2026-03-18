@@ -1,31 +1,44 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import type { DetectedIssue } from '@/types'
+import type { DetectedIssue, IssueSeverity } from '@/types'
 
-const API_KEY = process.env.OPENCLAW_API_KEY ?? process.env.OPENCLAW_GATEWAY_TOKEN
-const BASE_URL = process.env.OPENCLAW_BASE_URL
-const MODEL = process.env.OPENCLAW_MODEL ?? 'minimax-m1'
+interface OpenClawConfig {
+  apiKey: string
+  baseUrl: string
+  model: string
+}
 
-function getOpenClawConfig(): { apiKey: string; baseUrl: string; model: string } | null {
-  if (!API_KEY || !BASE_URL) {
+const HTTP_TIMEOUT_MS = 15000
+const WS_TIMEOUT_MS = 20000
+
+function getOpenClawConfig(): OpenClawConfig | null {
+  // Resolve env dynamically per request to avoid stale values in long-lived dev sessions.
+  const apiKey = process.env.OPENCLAW_API_KEY ?? process.env.OPENCLAW_GATEWAY_TOKEN
+  const baseUrl = process.env.OPENCLAW_BASE_URL
+  const model = process.env.OPENCLAW_MODEL ?? 'minimax-m1'
+
+  if (!apiKey || !baseUrl) {
     return null
   }
 
-  if (!/^(https?|wss?):\/\//i.test(BASE_URL)) {
+  if (!/^(https?|wss?):\/\//i.test(baseUrl)) {
     return null
   }
 
   return {
-    apiKey: API_KEY,
-    baseUrl: BASE_URL.replace(/\/$/, ''),
-    model: MODEL,
+    apiKey: apiKey.trim(),
+    baseUrl: baseUrl.replace(/\/$/, ''),
+    model: model.trim(),
   }
 }
 
-function fakeAiAnalysis(prompt: string, redactedPrompt: string) {
+function fakeAiAnalysis(
+  prompt: string,
+  redactedPrompt: string
+): { issues: DetectedIssue[]; redactedPrompt: string; recommendation: string; aiRiskScore: number } {
   type RawIssue = {
     type: string
-    severity: string
+    severity: IssueSeverity
     raw: string
     trimmed: string
     explanation: string
@@ -34,7 +47,7 @@ function fakeAiAnalysis(prompt: string, redactedPrompt: string) {
   const rawIssues: RawIssue[] = []
   const lower = prompt.toLowerCase()
 
-  const add = (type: string, severity: string, raw: string, explanation: string) => {
+  const add = (type: string, severity: IssueSeverity, raw: string, explanation: string) => {
     rawIssues.push({
       type,
       severity,
@@ -159,6 +172,56 @@ interface AIAnalysis {
   recommendation: string
 }
 
+function extractJsonFromText(raw: string): string {
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    return trimmed
+  }
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+  if (fenced?.[1]) {
+    return fenced[1].trim()
+  }
+
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1)
+  }
+
+  return trimmed
+}
+
+function normalizeSeverity(value: string | undefined): IssueSeverity {
+  const normalized = String(value ?? '').toLowerCase()
+  if (normalized === 'critical') return 'critical'
+  if (normalized === 'high') return 'high'
+  if (normalized === 'medium') return 'medium'
+  return 'low'
+}
+
+function coerceAiAnalysis(input: unknown): AIAnalysis {
+  const maybe = (input ?? {}) as Partial<AIAnalysis>
+  const aiIssues = Array.isArray(maybe.aiIssues) ? maybe.aiIssues : []
+
+  return {
+    riskScore:
+      typeof maybe.riskScore === 'number' && Number.isFinite(maybe.riskScore)
+        ? Math.max(0, Math.min(100, maybe.riskScore))
+        : 0,
+    aiIssues: aiIssues
+      .filter((item): item is { type: string; severity: string; match: string; explanation: string } => !!item)
+      .map((item) => ({
+        type: String(item.type ?? 'sensitive_context'),
+        severity: String(item.severity ?? 'medium'),
+        match: String(item.match ?? ''),
+        explanation: String(item.explanation ?? ''),
+      })),
+    redactedPrompt: typeof maybe.redactedPrompt === 'string' ? maybe.redactedPrompt : '',
+    recommendation: typeof maybe.recommendation === 'string' ? maybe.recommendation : '',
+  }
+}
+
 function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
 }
@@ -240,7 +303,7 @@ async function tryWebsocketChat(baseWsUrl: string, apiKey: string, safeInput: st
     const timeout = setTimeout(() => {
       ws.close()
       reject(new Error('ws timeout'))
-    }, 20000)
+    }, WS_TIMEOUT_MS)
 
     const cleanup = () => {
       clearTimeout(timeout)
@@ -335,17 +398,15 @@ async function tryOpenClawCli(apiKey: string, safeInput: string): Promise<string
     '--token',
     apiKey,
     '--timeout',
-    '20000',
+    String(WS_TIMEOUT_MS),
   ]
 
   // Try running OpenClaw CLI directly. If it is not on PATH, fall back to known install locations.
   // On Windows, execFile needs the .cmd wrapper — the bare script is a bash shebang and cannot be spawned.
-  const candidates = [
-    process.env.OPENCLAW_CLI_PATH ?? 'openclaw',
-    'openclaw.cmd',
-    'D:\\Coding.Engines\\nodejs\\openclaw.cmd',
-    'D:\\Coding.Engines\\nodejs\\openclaw',
-  ]
+  const configuredCliPath = process.env.OPENCLAW_CLI_PATH
+  const candidates = [configuredCliPath, 'openclaw', 'openclaw.cmd'].filter(
+    (value): value is string => Boolean(value && value.trim().length > 0)
+  )
   let lastError: unknown = null
   for (const cmd of candidates) {
     try {
@@ -419,11 +480,15 @@ export async function runAIScan(
     const url = joinUrl(httpBase, attempt.path)
     lastAttemptUrl = url
 
+    let timeout: NodeJS.Timeout | null = null
     try {
+      const controller = new AbortController()
+      timeout = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS)
       const response = await fetch(url, {
         method: 'POST',
         headers,
         body,
+        signal: controller.signal,
       })
 
       const responseText = await response.text()
@@ -443,6 +508,10 @@ export async function runAIScan(
       }
     } catch (err) {
       errors.push(`${attempt.path} -> ${String(err)}`)
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout)
+      }
     }
   }
 
@@ -478,14 +547,14 @@ export async function runAIScan(
   let analysis: AIAnalysis
 
   try {
-    analysis = JSON.parse(raw) as AIAnalysis
+    analysis = coerceAiAnalysis(JSON.parse(extractJsonFromText(raw)) as unknown)
   } catch {
     return { issues: [], redactedPrompt: patternRedactedPrompt, recommendation: '', aiRiskScore: 0 }
   }
 
   const issues: DetectedIssue[] = (analysis.aiIssues ?? []).map((ai) => ({
     type: ai.type,
-    severity: (ai.severity as DetectedIssue['severity']) ?? 'medium',
+    severity: normalizeSeverity(ai.severity),
     match: ai.match ?? '',
     redacted: `[REDACTED-${ai.type.toUpperCase().replace(/\s+/g, '-')}]`,
     explanation: ai.explanation ?? '',

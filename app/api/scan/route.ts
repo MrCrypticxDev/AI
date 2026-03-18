@@ -4,12 +4,22 @@ import { runAIScan } from '@/lib/ai-scanner'
 import type { ScanResult, RiskLevel } from '@/types'
 import { randomUUID } from 'crypto'
 
+const RISK_LEVEL_THRESHOLDS = { low: 20, medium: 50, high: 75 } as const
+
 function scoreToLevel(score: number): RiskLevel {
   if (score === 0) return 'safe'
-  if (score <= 20) return 'low'
-  if (score <= 50) return 'medium'
-  if (score <= 75) return 'high'
+  if (score <= RISK_LEVEL_THRESHOLDS.low) return 'low'
+  if (score <= RISK_LEVEL_THRESHOLDS.medium) return 'medium'
+  if (score <= RISK_LEVEL_THRESHOLDS.high) return 'high'
   return 'critical'
+}
+
+const DEMO_ISSUE_FALLBACK = {
+  type: 'sensitive_context',
+  severity: 'medium' as const,
+  match: 'example-secret-12345',
+  redacted: '[REDACTED-SENSITIVE_CONTEXT]',
+  explanation: 'Demonstration issue: the AI scan could not run, so this is a placeholder finding.',
 }
 
 export async function POST(req: NextRequest) {
@@ -49,16 +59,7 @@ export async function POST(req: NextRequest) {
     aiScore = aiResult.aiRiskScore
   } catch (err) {
     console.error('[PromptGuard] AI scan error:', err)
-    // As a last-resort fallback, show a simple “demo” issue so the UI remains populated.
-    aiIssues = [
-      {
-        type: 'sensitive_context',
-        severity: 'medium',
-        match: 'example-secret-12345',
-        redacted: '[REDACTED-SENSITIVE_CONTEXT]',
-        explanation: 'Demonstration issue: the AI scan could not run, so this is a placeholder finding.',
-      },
-    ]
+    aiIssues = [DEMO_ISSUE_FALLBACK]
     aiScore = 15
     recommendation = 'AI scan is currently unavailable; only basic pattern scanning is applied.'
   }
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
   const allIssues = [...patternIssues, ...aiIssues]
   const finalScore = Math.max(patternScore, aiScore)
   const riskLevel = scoreToLevel(finalScore)
+  const scanDuration = Date.now() - start
 
   const result: ScanResult = {
     id: randomUUID(),
@@ -76,16 +78,18 @@ export async function POST(req: NextRequest) {
     redactedPrompt: finalRedacted,
     recommendation:
       recommendation ||
-      (allIssues.length === 0
-        ? 'This prompt looks safe to send.'
-        : 'Remove or replace the flagged values before sending.'),
+      (allIssues.length === 0 ? 'This prompt looks safe to send.' : 'Remove or replace the flagged values before sending.'),
     patternMatches: patternIssues.length,
     aiMatches: aiIssues.length,
-    scanDuration: Date.now() - start,
+    scanDuration,
     timestamp: new Date().toISOString(),
   }
 
   // Local-first mode: persistence is handled in the browser (localStorage).
-
-  return NextResponse.json(result)
+  return NextResponse.json(result, {
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'X-Scan-Duration': `${scanDuration}ms`,
+    },
+  })
 }

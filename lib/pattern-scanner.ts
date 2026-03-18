@@ -8,7 +8,8 @@ interface PatternDef {
   redactLabel: string
 }
 
-// Ordered by severity — most critical first
+// Pre-compiled patterns ordered by severity — most critical first
+// Compiled once at module load for optimal performance
 const BUILT_IN_PATTERNS: PatternDef[] = [
   {
     type: 'aws_key',
@@ -110,11 +111,10 @@ export interface PatternScanResult {
 
 export function runPatternScan(prompt: string): PatternScanResult {
   const issues: DetectedIssue[] = []
+  const replacementMap = new Map<string, string>()
   let redactedPrompt = prompt
 
   for (const def of BUILT_IN_PATTERNS) {
-    // Reset lastIndex for global regexes
-    def.pattern.lastIndex = 0
     const matches = [...prompt.matchAll(def.pattern)]
 
     for (const match of matches) {
@@ -123,6 +123,9 @@ export function runPatternScan(prompt: string): PatternScanResult {
       if (raw.length < 8) continue
 
       const redactTag = `[REDACTED-${def.redactLabel}]`
+      // Cache redaction tags to avoid duplicate replacements
+      replacementMap.set(raw, redactTag)
+      
       issues.push({
         type: def.type,
         severity: def.severity,
@@ -130,9 +133,12 @@ export function runPatternScan(prompt: string): PatternScanResult {
         redacted: redactTag,
         explanation: `Detected ${def.label}. This should never be included in an AI prompt.`,
       })
-      // Replace ALL occurrences in redacted output
-      redactedPrompt = redactedPrompt.replaceAll(raw, redactTag)
     }
+  }
+
+  // Apply all replacements efficiently
+  for (const [raw, redactTag] of replacementMap.entries()) {
+    redactedPrompt = redactedPrompt.replaceAll(raw, redactTag)
   }
 
   return { issues, redactedPrompt }
